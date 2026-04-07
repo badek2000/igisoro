@@ -41,16 +41,24 @@ impl Player {
         Player { pits }
     }
 
-    fn sow(&mut self, opponent: &mut Player, mut idx: usize) -> bool {
+    fn sow(&mut self, opponent: &mut Player, start: usize) -> bool {
+        let mut idx= start;
+        
         loop {
             match self.sow_once(idx) {
                 SowResult::Invalid => return false,
                 SowResult::End     => return true,
                 SowResult::Continue { pit: next } => {
                     if next < X_SIZE && self.is_capture_possible(opponent, next) {
-                        self.capture(opponent, next);
+                        self.capture(opponent, next, start);
+                        print!("Capture!\n");
+                        idx = start;
+                    if Self::is_rev_possible(idx) {
+                        println!("Rev possible!");
                     }
-                    idx = next;
+                    } else {
+                        idx = next;
+                    }
                 }
             }
         }
@@ -77,18 +85,22 @@ impl Player {
         }
     }
     
-    fn capture(&mut self, opponent: &mut Player, idx: usize) {
-        let opp_pit = Self::mirror_pit(idx);
-        let captured = opponent.pits[opp_pit] + opponent.pits[opp_pit + X_SIZE];
-        opponent.pits[opp_pit] = 0;
-        opponent.pits[opp_pit + X_SIZE] = 0;
+    fn capture(&mut self, opponent: &mut Player, idx: usize, start: usize) {
+        let opp_inner = Self::mirror_pit(idx);
+        let opp_outer = 2 * X_SIZE - 1 - opp_inner;
 
-        self.pits[idx] += captured;
+        let captured = opponent.pits[opp_inner] + opponent.pits[opp_outer];
+        opponent.pits[opp_inner] = 0;
+        opponent.pits[opp_outer] = 0;
+
+        self.pits[start] += captured;
     }
 
     fn is_capture_possible(&self, opponent: &Player, pit: usize) -> bool {
-        let opp_pit = Self::mirror_pit(pit);
-        opponent.pits[opp_pit] > 0 && opponent.pits[opp_pit + X_SIZE] > 0
+        let opp_inner = Self::mirror_pit(pit);
+        let opp_outer = 2 * X_SIZE - 1 - opp_inner;
+
+        opponent.pits[opp_inner] > 0 && opponent.pits[opp_outer] > 0 && self.pits[pit] > 1
     }
 
     fn is_rev_possible(idx: usize) -> bool {
