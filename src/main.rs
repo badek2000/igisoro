@@ -1,5 +1,4 @@
-use std::thread::sleep;
-use std::time::Duration;
+use std::io;
 
 const X_SIZE: usize   = 8;
 const Y_SIZE: usize   = 2;
@@ -42,27 +41,16 @@ impl Player {
         Player { pits }
     }
 
-    fn is_capture_possible(&self, opponent: &Player, col: usize) -> bool {
-        let opp_col = Self::mirror_col(col);
-        opponent.pits[opp_col] > 0 && opponent.pits[opp_col + X_SIZE] > 0
-    }
-
-    fn is_rev_possible(&self, idx: usize) -> bool {
-        REV_POSSIBLE_PITS.contains(&idx)
-    }
-
-    fn sow(&mut self, opponent: &mut Player, idx: usize) -> bool {
-        let mut pit = idx;
-        
+    fn sow(&mut self, opponent: &mut Player, mut idx: usize) -> bool {
         loop {
-            match self.sow_once(pit) {
+            match self.sow_once(idx) {
                 SowResult::Invalid => return false,
                 SowResult::End     => return true,
                 SowResult::Continue { pit: next } => {
                     if next < X_SIZE && self.is_capture_possible(opponent, next) {
                         self.capture(opponent, next);
                     }
-                    pit = next;
+                    idx = next;
                 }
             }
         }
@@ -85,8 +73,26 @@ impl Player {
 
         match self.pits[curr_idx] {
             1 => SowResult::End,
-            _ => SowResult::Continue { pit: (curr_idx) },
+            _ => SowResult::Continue { pit: curr_idx },
         }
+    }
+    
+    fn capture(&mut self, opponent: &mut Player, idx: usize) {
+        let opp_pit = Self::mirror_pit(idx);
+        let captured = opponent.pits[opp_pit] + opponent.pits[opp_pit + X_SIZE];
+        opponent.pits[opp_pit] = 0;
+        opponent.pits[opp_pit + X_SIZE] = 0;
+
+        self.pits[idx] += captured;
+    }
+
+    fn is_capture_possible(&self, opponent: &Player, pit: usize) -> bool {
+        let opp_pit = Self::mirror_pit(pit);
+        opponent.pits[opp_pit] > 0 && opponent.pits[opp_pit + X_SIZE] > 0
+    }
+
+    fn is_rev_possible(idx: usize) -> bool {
+        REV_POSSIBLE_PITS.contains(&idx)
     }
 
     fn get_row(&self, row: Row) -> &[u8] {
@@ -96,17 +102,8 @@ impl Player {
         }
     }
 
-    fn mirror_col(col: usize) -> usize {
-        X_SIZE - 1 - col
-    }
-
-    fn capture(&mut self, opponent: &mut Player, idx: usize) {
-        let opp_col = Self::mirror_col(idx);
-        let captured = opponent.pits[opp_col] + opponent.pits[opp_col + X_SIZE];
-        opponent.pits[opp_col] = 0;
-        opponent.pits[opp_col + X_SIZE] = 0;
-
-        self.pits[idx] += captured;
+    fn mirror_pit(idx: usize) -> usize {
+        X_SIZE - 1 - idx
     }
 
     fn print(&self, mirror: bool) {
@@ -131,41 +128,74 @@ impl Player {
     }
 }
 
+struct Game {
+    players: [Player; 2],
+    round: usize,
+    curr_player: usize,
+}
+
+impl Game {
+    fn new() -> Self {
+        Game {
+            players: [Player::new(), Player::new()],
+            round: 0,
+            curr_player: 1,
+        }
+    }
+
+    fn start(&mut self) {
+        self.main_loop();
+    }
+
+    fn player_and_opponent(&mut self) -> (&mut Player, &mut Player) {
+        let (a, b) = self.players.split_at_mut(1);
+        if self.curr_player == 0 {
+            (&mut a[0], &mut b[0])
+        } else {
+            (&mut b[0], &mut a[0])
+        }
+    }
+
+    fn print_board(&self) {
+        println!("    --- Round {} ---    ", self.round);
+        self.players[1].print(true);
+        println!("────────────────────────");
+        self.players[0].print(false);
+        println!();
+    }
+
+    fn main_loop(&mut self) {
+        loop {
+            self.print_board();
+
+            let cp = self.curr_player;
+            let (player, opponent) = self.player_and_opponent();
+
+            if !player.is_any_move_available() {
+                println!("Player {} wins!", 2 - cp);
+                return;
+            }
+
+            loop {
+                let mov = gen_move();
+                println!("P{} picks pit {}", cp + 1, mov);
+                if player.sow(opponent, mov) {
+                    break;
+                }
+            }
+
+            self.curr_player = 1 - self.curr_player;
+            self.round += 1;
+        }
+    }
+
+}
+
 fn gen_move() -> usize {
     rand::random_range(..PITS_CNT)
 }
 
 fn main() {
-    let mut player1 = Player::new();
-    let mut player2 = Player::new();
-
-    let mut i: usize = 0;
-    loop {
-        println!("Move #{:02}", i);
-        
-        if !player2.is_any_move_available() {
-            println!("Player 1 wins!");
-            return;
-        }
-        let mut res1 = player2.sow(&mut player1, gen_move());
-        while !res1 { res1 = player2.sow(&mut player1, gen_move()); }
-
-        println!("After P2:");
-        player2.print(true);
-        player1.print(false);
-
-        if !player1.is_any_move_available() {
-            println!("Player 2 wins!");
-            return;
-        }
-        let mut res2 = player1.sow(&mut player2, gen_move());
-        while !res2 { res2 = player1.sow(&mut player2, gen_move()); }
-
-        println!("After P1:");
-        player2.print(true);
-        player1.print(false);
-
-        sleep(Duration::from_millis(10));
-        i += 1;
-    }
+    let mut game = Game::new();
+    game.start();
 }
