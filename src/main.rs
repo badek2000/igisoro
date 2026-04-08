@@ -1,4 +1,6 @@
-use std::io;
+use std::ffi::os_str::Display;
+use std::ops::{Index, IndexMut};
+use std::fmt
 
 const X_SIZE: usize   = 8;
 const Y_SIZE: usize   = 2;
@@ -18,130 +20,183 @@ const REV_POSSIBLE_PITS: [usize; 4] = [1, 6, 8, 15];
  *  ╚───┴───┴───┴───┴───┴───┴───┴───╝
  */
 
-struct Player {
-    pits: [u8; X_SIZE * Y_SIZE],
+#[derive(Debug)]
+enum GameError {
+    InvalidPitIdx,
+    InvalidMove,
+    EmptyPit,
+    Logic,
 }
 
+struct Player {
+    pits: [[u8; X_SIZE]; Y_SIZE],
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
 enum Row {
-    Inner,
-    Outer, 
+    Inner = 0,
+    Outer = 1,
 }
 
 enum SowResult {
-    Invalid,
     End,
-    Continue {pit: usize},
+    Continue {pit: BoardIndex},
 }
 
-impl Player {
-    fn new() -> Self {
-        let mut pits = [0u8; X_SIZE * Y_SIZE];
-        pits[0..X_SIZE].fill(4);
+type BoardArr = [u8; X_SIZE];
+struct PlayerBoard {   
+    inner: BoardArr,
+    outer: BoardArr,
+}
 
-        Player { pits }
+impl Index<Row> for PlayerBoard {
+    type Output = BoardArr;
+
+    fn index(&self, row: Row) -> &Self::Output {
+        match row {
+            Row::Inner => &self.inner,
+            Row::Outer => &self.outer,
+        }
+    }
+}
+
+impl IndexMut<Row> for PlayerBoard {
+    fn index_mut(&mut self, row: Row) -> &mut Self::Output {
+        match row {
+            Row::Inner => &mut self.inner,
+            Row::Outer => &mut self.outer,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Direction {
+    Forward,
+    Reverse,
+}
+
+#[derive(Clone, Copy)]
+struct BoardIndex(usize);
+impl BoardIndex {
+    fn new(idx: usize) -> Result<Self, GameError> {
+        if idx >= PITS_CNT {
+            return Err(GameError::InvalidPitIdx);
+        }
+        Ok(BoardIndex(idx))
     }
 
-    fn sow(&mut self, opponent: &mut Player, start: usize) -> bool {
-        let mut idx= start;
-        
-        loop {
-            match self.sow_once(idx) {
-                SowResult::Invalid => return false,
-                SowResult::End     => return true,
-                SowResult::Continue { pit: next } => {
-                    if next < X_SIZE && self.is_capture_possible(opponent, next) {
-                        self.capture(opponent, next, start);
-                        print!("Capture!\n");
-                        idx = start;
-                    if Self::is_rev_possible(idx) {
-                        println!("Rev possible!");
-                    }
-                    } else {
-                        idx = next;
-                    }
-                }
+    fn split(&self) -> (Row, usize) {
+        if self.0 < X_SIZE {
+            (Row::Inner, self.0)
+        } else {
+            (Row::Outer, self.0 % X_SIZE)
+        }
+    }
+
+    fn step(self, dir: Direction) -> Self {
+        match dir {
+            Direction::Forward => self.next(),
+            Direction::Reverse => self.prev(),
+        }
+    }
+
+    fn next(self) -> Self {
+        BoardIndex((self.0 + 1) % PITS_CNT)
+    }
+
+    fn prev(self) -> Self {
+        BoardIndex((self.0 + PITS_CNT - 1) % PITS_CNT)
+    }
+}
+
+impl fmt::Display for BoardIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (row, col) = self.split();
+        match row {
+            Row::Inner => write!(f, "I{}", col),
+            Row::Outer => write!(f, "O{}", col),
+        }
+    }
+}
+
+enum MoveType {
+    Sow,
+    Capture,
+}
+
+impl PlayerBoard {
+    fn new() -> Self {
+        PlayerBoard { inner: [0; X_SIZE], outer: [0; X_SIZE] }
+    }
+
+    fn capture(&mut self, idx: BoardIndex, dir: Direction, mut seeds: u8) -> Result<SowResult, GameError> {
+        self.validate_move(idx, MoveType::Capture)?;
+        let mut pos = idx;
+        while seeds != 0 {
+            pos = pos.step(dir);
+            let (row, col) = pos.split();
+            self[row][col] += 1;
+            seeds -= 1;
+        }
+
+        let (row, col) = pos.split();
+        match self[row][col] {
+            0 => Err(GameError::Logic),
+            1 => Ok(SowResult::End),
+            _ => Ok(SowResult::Continue { pit: pos }),
+        }
+    }
+
+    fn sow(&mut self, idx: BoardIndex, dir: Direction) -> Result<SowResult, GameError> {
+        self.validate_move(idx, MoveType::Sow)?;
+        let mut pos = idx;
+
+        let (row, col) = pos.split();
+        let mut current_seeds_cnt = self[row][col];
+        self[row][col] = 0;
+
+        while current_seeds_cnt != 0 {
+            pos = pos.step(dir);
+            let (row, col) = pos.split();
+
+            self[row][col] += 1;
+            current_seeds_cnt -= 1;
+        }
+
+        let (row, col) = pos.split();
+        match self[row][col] {
+            0 => Err(GameError::Logic),
+            1 => Ok(SowResult::End),
+            _ => Ok(SowResult::Continue { pit: pos }),
+        }
+    }
+
+    fn take_seeds(&mut self, idx: BoardIndex) -> u8 {
+        let (_, col) = idx.split();
+        let captured = self[Row::Inner][col] + self[Row::Outer][col];
+        self[Row::Inner][col] = 0;
+        self[Row::Outer][col] = 0;
+        return captured;
+    }
+
+    fn validate_move(&self, idx: BoardIndex, move_type: MoveType) -> Result<(), GameError> {
+        let (row, col) = idx.split();
+        match move_type {
+            MoveType::Sow => {
+                if self[row][col] <= 1 {return Err(GameError::InvalidMove);}
+            }
+            MoveType::Capture => {
+                if self[row][col] == 0 {return Err(GameError::EmptyPit);}
             }
         }
-    }
 
-    fn sow_once(&mut self, idx: usize) -> SowResult {
-        if self.pits[idx] <= 1 { return SowResult::Invalid; }
-
-        let mut curr_idx = idx;
-        let mut seeds_cnt = self.pits[idx];
-        self.pits[idx] = 0;
-
-        while seeds_cnt != 0 {
-            curr_idx += 1;
-            curr_idx %= PITS_CNT;
-            seeds_cnt -= 1;
-
-            self.pits[curr_idx] += 1;
-        }
-
-        match self.pits[curr_idx] {
-            1 => SowResult::End,
-            _ => SowResult::Continue { pit: curr_idx },
-        }
-    }
-    
-    fn capture(&mut self, opponent: &mut Player, idx: usize, start: usize) {
-        let opp_inner = Self::mirror_pit(idx);
-        let opp_outer = 2 * X_SIZE - 1 - opp_inner;
-
-        let captured = opponent.pits[opp_inner] + opponent.pits[opp_outer];
-        opponent.pits[opp_inner] = 0;
-        opponent.pits[opp_outer] = 0;
-
-        self.pits[start] += captured;
-    }
-
-    fn is_capture_possible(&self, opponent: &Player, pit: usize) -> bool {
-        let opp_inner = Self::mirror_pit(pit);
-        let opp_outer = 2 * X_SIZE - 1 - opp_inner;
-
-        opponent.pits[opp_inner] > 0 && opponent.pits[opp_outer] > 0 && self.pits[pit] > 1
-    }
-
-    fn is_rev_possible(idx: usize) -> bool {
-        REV_POSSIBLE_PITS.contains(&idx)
-    }
-
-    fn get_row(&self, row: Row) -> &[u8] {
-        match row {
-            Row::Inner => &self.pits[..X_SIZE],
-            Row::Outer => &self.pits[X_SIZE..],
-        }
-    }
-
-    fn mirror_pit(idx: usize) -> usize {
-        X_SIZE - 1 - idx
-    }
-
-    fn print(&self, mirror: bool) {
-        let (row1, row2) = if mirror {
-            (self.get_row(Row::Outer), self.get_row(Row::Inner))
-        } else {
-            (self.get_row(Row::Inner), self.get_row(Row::Outer))
-        };
-
-        for val in row1.iter().rev() {
-            print!("{:2} ", val);
-        }
-        print!("\n");
-        for val in row2 {
-            print!("{:2} ", val);
-        }
-        print!("\n");
-    }
-
-    fn is_any_move_available(&self) -> bool {
-        self.pits.iter().any(|&pit| pit > 1u8 )
+        Ok(())
     }
 }
 
 struct Game {
-    players: [Player; 2],
+    players: [PlayerBoard; 2],
     round: usize,
     curr_player: usize,
 }
