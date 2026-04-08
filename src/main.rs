@@ -28,10 +28,6 @@ enum GameError {
     Logic,
 }
 
-struct Player {
-    pits: [[u8; X_SIZE]; Y_SIZE],
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 enum Row {
@@ -192,6 +188,33 @@ impl PlayerBoard {
         }
 
         Ok(())
+    }
+}
+
+trait MoveSource {
+    fn pick_pit(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> BoardIndex;
+    fn pick_direction(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> Direction;
+}
+
+struct RandomAI;
+impl MoveSource for RandomAI {
+    fn pick_pit(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> BoardIndex {
+        todo!()
+    }
+
+    fn pick_direction(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> Direction {
+        todo!()
+    }
+}
+
+struct Player;
+impl MoveSource for Player {
+    fn pick_pit(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> BoardIndex {
+        todo!()
+    }
+    
+    fn pick_direction(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> Direction {
+        todo!()
     }
 }
 
