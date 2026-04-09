@@ -173,7 +173,7 @@ impl PlayerBoard {
         let captured = self[Row::Inner][col] + self[Row::Outer][col];
         self[Row::Inner][col] = 0;
         self[Row::Outer][col] = 0;
-        return captured;
+        captured
     }
 
     fn validate_move(&self, idx: BoardIndex, move_type: MoveType) -> Result<(), GameError> {
@@ -199,7 +199,7 @@ trait MoveSource {
 struct RandomInput;
 impl MoveSource for RandomInput {
     fn pick_pit(&mut self, _player: &PlayerBoard, _opponent: &PlayerBoard) -> BoardIndex {
-        BoardIndex(rand::random_range(..PITS_CNT-1))
+        BoardIndex(rand::random_range(..PITS_CNT))
     }
 
     fn pick_direction(&mut self, _player: &PlayerBoard, _opponent: &PlayerBoard) -> Result<Direction, GameError> {
@@ -252,9 +252,9 @@ impl MoveSource for ConsoleInput {
         print!("Reverse [y/n]: ");
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
-        if input == "y" {
+        if input.trim() == "y" {
             return Ok(Direction::Reverse);
-        } else if input == "n" {
+        } else if input.trim() == "n" {
             return Ok(Direction::Forward);
         }
 
