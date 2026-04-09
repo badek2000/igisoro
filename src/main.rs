@@ -1,6 +1,6 @@
-use std::ffi::os_str::Display;
 use std::ops::{Index, IndexMut};
-use std::fmt
+use std::fmt;
+use std::io;
 
 const X_SIZE: usize   = 8;
 const Y_SIZE: usize   = 2;
@@ -193,99 +193,82 @@ impl PlayerBoard {
 
 trait MoveSource {
     fn pick_pit(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> BoardIndex;
-    fn pick_direction(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> Direction;
+    fn pick_direction(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> Result<Direction, GameError>;
 }
 
-struct RandomAI;
-impl MoveSource for RandomAI {
-    fn pick_pit(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> BoardIndex {
-        todo!()
+struct RandomInput;
+impl MoveSource for RandomInput {
+    fn pick_pit(&mut self, _player: &PlayerBoard, _opponent: &PlayerBoard) -> BoardIndex {
+        BoardIndex(rand::random_range(..PITS_CNT-1))
     }
 
-    fn pick_direction(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> Direction {
-        todo!()
-    }
-}
-
-struct Player;
-impl MoveSource for Player {
-    fn pick_pit(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> BoardIndex {
-        todo!()
-    }
-    
-    fn pick_direction(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> Direction {
-        todo!()
-    }
-}
-
-struct Game {
-    players: [PlayerBoard; 2],
-    round: usize,
-    curr_player: usize,
-}
-
-impl Game {
-    fn new() -> Self {
-        Game {
-            players: [Player::new(), Player::new()],
-            round: 0,
-            curr_player: 1,
-        }
-    }
-
-    fn start(&mut self) {
-        self.main_loop();
-    }
-
-    fn player_and_opponent(&mut self) -> (&mut Player, &mut Player) {
-        let (a, b) = self.players.split_at_mut(1);
-        if self.curr_player == 0 {
-            (&mut a[0], &mut b[0])
+    fn pick_direction(&mut self, _player: &PlayerBoard, _opponent: &PlayerBoard) -> Result<Direction, GameError> {
+        if rand::random_bool(0.5) {
+            Ok(Direction::Forward)
         } else {
-            (&mut b[0], &mut a[0])
+            Ok(Direction::Reverse)
         }
     }
+}
 
-    fn print_board(&self) {
-        println!("    --- Round {} ---    ", self.round);
-        self.players[1].print(true);
+struct ConsoleInput;
+impl ConsoleInput {
+    fn print_board(&self, player: &PlayerBoard, opponent: &PlayerBoard) {
+        /* Opponent */
+        for val in opponent[Row::Outer].iter().rev() {
+            print!("{:02} ", val);
+        }
+        println!();
+
+        for val in opponent[Row::Inner] {
+            print!("{:02} ", val);
+        }
         println!("────────────────────────");
-        self.players[0].print(false);
+
+        /* Player */
+        for val in player[Row::Inner].iter().rev() {
+            print!("{:02} ", val);
+        }
+        println!();
+
+        for val in player[Row::Outer] {
+            print!("{:02} ", val);
+        }
         println!();
     }
+}
 
-    fn main_loop(&mut self) {
-        loop {
-            self.print_board();
-
-            let cp = self.curr_player;
-            let (player, opponent) = self.player_and_opponent();
-
-            if !player.is_any_move_available() {
-                println!("Player {} wins!", 2 - cp);
-                return;
-            }
-
-            loop {
-                let mov = gen_move();
-                println!("P{} picks pit {}", cp + 1, mov);
-                if player.sow(opponent, mov) {
-                    break;
-                }
-            }
-
-            self.curr_player = 1 - self.curr_player;
-            self.round += 1;
-        }
+impl MoveSource for ConsoleInput {
+    fn pick_pit(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> BoardIndex {
+        self.print_board(player, opponent);
+        
+        print!("Choose index [0..15]: ");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        BoardIndex(input.trim().parse().unwrap())
     }
+    
+    fn pick_direction(&mut self, _player: &PlayerBoard, _opponent: &PlayerBoard) -> Result<Direction, GameError> {
+        print!("Reverse [y/n]: ");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        if input == "y" {
+            return Ok(Direction::Reverse);
+        } else if input == "n" {
+            return Ok(Direction::Forward);
+        }
 
+        Err(GameError::InvalidMove)
+    }
 }
 
-fn gen_move() -> usize {
-    rand::random_range(..PITS_CNT)
+struct Player {
+    board: PlayerBoard,
+    input: Box<dyn MoveSource>,
 }
 
+use std::env;
 fn main() {
-    let mut game = Game::new();
-    game.start();
+    let args: Vec<String> = env::args().collect();
+    println!("Hello from {}", args[0]);
 }
