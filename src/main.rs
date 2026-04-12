@@ -126,6 +126,7 @@ impl PlayerBoard {
         PlayerBoard { inner: [0; X_SIZE], outer: [0; X_SIZE] }
     }
 
+    // TODO: Unify capture and sow into one function
     fn capture(&mut self, idx: BoardIndex, dir: Direction, mut seeds: u8) -> Result<SowResult, GameError> {
         self.validate_move(idx, MoveType::Capture)?;
         let mut pos = idx;
@@ -220,7 +221,7 @@ impl ConsoleInput {
         }
         println!();
 
-        for val in opponent[Row::Inner] {
+        for val in opponent[Row::Inner].iter() {
             print!("{:02} ", val);
         }
         println!("────────────────────────");
@@ -231,7 +232,7 @@ impl ConsoleInput {
         }
         println!();
 
-        for val in player[Row::Outer] {
+        for val in player[Row::Outer].iter() {
             print!("{:02} ", val);
         }
         println!();
@@ -267,8 +268,53 @@ struct Player {
     input: Box<dyn MoveSource>,
 }
 
+enum TurnState {
+    PickPit,
+    PickDirection { pit: BoardIndex },
+    Sowing { pit: BoardIndex, dir: Direction },
+    Capture { pit: BoardIndex, dir: Direction },
+    End,
+}
+
+struct Game {
+    players: [Player; 2]
+}
+
+impl Game {
+    fn new(move_source_1: Box<dyn MoveSource>, move_source_2: Box<dyn MoveSource>) -> Self {
+        Game {
+            players: [
+                Player {board: PlayerBoard::new(), input: move_source_1},
+                Player {board: PlayerBoard::new(), input: move_source_2},
+            ],
+        }
+    }
+
+    fn start(&self) {
+        println!("Starting game");
+    }
+
+    fn execute_turn(&mut self, curr_player: usize) {
+        let opp = 1 - curr_player;
+        let mut state = TurnState::PickPit;
+
+        loop {
+            state = match state {
+                todo()!
+            }
+        }
+    }
+}
+
 use std::env;
 fn main() {
+    let mut game = Game::new(
+        Box::new(ConsoleInput),
+        Box::new(RandomInput),
+    );
+ 
+    game.start();
+
     let args: Vec<String> = env::args().collect();
     println!("Hello from {}", args[0]);
 }
