@@ -332,25 +332,28 @@ impl Game {
                     }
                 },
                 TurnState::PickDirection { pit } => {
-                    let dir = self.players[cp_idx].input.pick_direction(     
+                    match self.players[cp_idx].input.pick_direction(     
                         &self.players[cp_idx].board,
                         &self.players[opp_idx].board
-                    ).unwrap();  // TODO: Retry logic
-                    TurnState::Sowing { pit, dir }
+                    ) {
+                        Ok(dir) => TurnState::Sowing { pit, dir },
+                        Err(_) => TurnState::PickDirection { pit },
+                    }
                 },
                 TurnState::Sowing { pit, dir} => { 
                     if Self::is_capture_possible(pit, &self.players[cp_idx].board, &self.players[opp_idx].board) {
                         TurnState::Capture { pit, dir }
                     } else {
-                        match self.players[cp_idx].board.sow(pit, dir).unwrap() {
-                            SowResult::Continue { pit } => {
+                        match self.players[cp_idx].board.sow(pit, dir) {
+                            Ok(SowResult::Continue { pit }) => {
                                 if Self::is_reverse_possible(pit, &self.players[cp_idx].board, &self.players[opp_idx].board) {
                                     TurnState::PickDirection { pit }
                                 } else {
                                     TurnState::Sowing { pit, dir }
                                 }
-                            }
-                            SowResult::End => TurnState::End
+                            },
+                            Ok(SowResult::End) => TurnState::End,
+                            Err(_) => TurnState::PickPit,
                         }
                     }
                 },
