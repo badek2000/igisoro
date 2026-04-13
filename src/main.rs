@@ -1,12 +1,13 @@
 use std::ops::{Index, IndexMut};
 use std::fmt;
-use std::io;
+use std::io::Write;
 
 const X_SIZE: usize   = 8;
 const Y_SIZE: usize   = 2;
 const PITS_CNT: usize = X_SIZE * Y_SIZE;
 
-const REV_POSSIBLE_PITS: [usize; 4] = [1, 6, 8, 15];
+const REV_POSSIBLE_INNER_PITS: [usize; 2] = [1, 6];
+const REV_POSSIBLE_OUTER_PITS: [usize; 2] = [8, 15];
 
 /* 
  *  ╔═══════════════════════════════╗
@@ -123,7 +124,7 @@ enum MoveType {
 
 impl PlayerBoard {
     fn new() -> Self {
-        PlayerBoard { inner: [0; X_SIZE], outer: [0; X_SIZE] }
+        PlayerBoard { inner: [4; X_SIZE], outer: [0; X_SIZE] }
     }
 
     // TODO: Unify capture and sow into one function
@@ -150,15 +151,15 @@ impl PlayerBoard {
         let mut pos = idx;
 
         let (row, col) = pos.split();
-        let mut current_seeds_cnt = self[row][col];
+        let mut cp_idx_seeds_cnt = self[row][col];
         self[row][col] = 0;
 
-        while current_seeds_cnt != 0 {
+        while cp_idx_seeds_cnt != 0 {
             pos = pos.step(dir);
             let (row, col) = pos.split();
 
             self[row][col] += 1;
-            current_seeds_cnt -= 1;
+            cp_idx_seeds_cnt -= 1;
         }
 
         let (row, col) = pos.split();
@@ -224,7 +225,7 @@ impl ConsoleInput {
         for val in opponent[Row::Inner].iter() {
             print!("{:02} ", val);
         }
-        println!("────────────────────────");
+        println!("\n────────────────────────");
 
         /* Player */
         for val in player[Row::Inner].iter().rev() {
@@ -244,6 +245,8 @@ impl MoveSource for ConsoleInput {
         self.print_board(player, opponent);
         
         print!("Choose index [0..15]: ");
+        std::io::stdout().flush().unwrap();
+
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
         BoardIndex(input.trim().parse().unwrap())
@@ -251,6 +254,8 @@ impl MoveSource for ConsoleInput {
     
     fn pick_direction(&mut self, _player: &PlayerBoard, _opponent: &PlayerBoard) -> Result<Direction, GameError> {
         print!("Reverse [y/n]: ");
+        std::io::stdout().flush().unwrap();
+
         let mut input = String::new();
         std::io::stdin().read_line(&mut input).unwrap();
         if input.trim() == "y" {
@@ -276,6 +281,11 @@ enum TurnState {
     End,
 }
 
+enum TurnResult {
+    Continue,
+    NoMovesAvailable,
+}
+
 struct Game {
     players: [Player; 2]
 }
@@ -290,19 +300,99 @@ impl Game {
         }
     }
 
-    fn start(&self) {
-        println!("Starting game");
-    }
-
-    fn execute_turn(&mut self, curr_player: usize) {
-        let opp = 1 - curr_player;
-        let mut state = TurnState::PickPit;
-
+    fn start(&mut self) {
+        let mut cp = 0;
         loop {
-            state = match state {
-                todo()!
+            match self.execute_turn(cp) {
+                TurnResult::Continue => cp = 1 - cp,
+                TurnResult::NoMovesAvailable => {
+                    println!("Player {} wins!", 2 - cp);
+                    return;
+                }
             }
         }
+    }
+
+    fn execute_turn(&mut self, cp_idx: usize) -> TurnResult {
+        let opp_idx = 1 - cp_idx;
+        let mut state = TurnState::PickPit;
+
+        // TODO: Extract functions from each 
+        loop {
+            state = match state {
+                TurnState::PickPit => {
+                    let pit = self.players[cp_idx].input.pick_pit(
+                        &self.players[cp_idx].board,
+                         &self.players[opp_idx].board
+                    );
+                    if Self::is_reverse_possible(pit, &self.players[cp_idx].board, &self.players[opp_idx].board) {
+                        TurnState::PickDirection { pit }
+                    } else {
+                        TurnState::Sowing { pit, dir: Direction::Forward }
+                    }
+                },
+                TurnState::PickDirection { pit } => {
+                    let dir = self.players[cp_idx].input.pick_direction(     
+                        &self.players[cp_idx].board,
+                        &self.players[opp_idx].board
+                    ).unwrap();  // TODO: Retry logic
+                    TurnState::Sowing { pit, dir }
+                },
+                TurnState::Sowing { pit, dir} => { 
+                    if Self::is_capture_possible(pit, &self.players[cp_idx].board, &self.players[opp_idx].board) {
+                        TurnState::Capture { pit, dir }
+                    } else {
+                        match self.players[cp_idx].board.sow(pit, dir).unwrap() {
+                            SowResult::Continue { pit } => {
+                                if Self::is_reverse_possible(pit, &self.players[cp_idx].board, &self.players[opp_idx].board) {
+                                    TurnState::PickDirection { pit }
+                                } else {
+                                    TurnState::Sowing { pit, dir }
+                                }
+                            }
+                            SowResult::End => TurnState::End
+                        }
+                    }
+                },
+                TurnState::Capture { pit, dir} => { todo!() },
+                TurnState::End => { return TurnResult::Continue; },
+            }
+        }
+    }
+
+    fn is_reverse_possible(pit: BoardIndex, cp_idx: &PlayerBoard, opp: &PlayerBoard) -> bool {
+        /* Is player at special pit? */
+        let (row, col) = pit.split();
+
+        match row {
+            Row::Inner => { if !REV_POSSIBLE_INNER_PITS.contains(&col) {return false} },
+            Row::Outer => { if !REV_POSSIBLE_OUTER_PITS.contains(&col) {return false} },
+        }
+
+        /* Is capture possible in opposite dir? */
+        let seeds = cp_idx[row][col];
+        let mut capture_pit: BoardIndex = pit;
+        for _ in 0..seeds {capture_pit = capture_pit.prev()};
+
+        let (row, col) = capture_pit.split();
+        
+        if row != Row::Inner {
+            return false;
+        }
+
+        if cp_idx[row][col] == 0 {
+            return false;
+        }
+
+        if opp[Row::Inner][col] == 0 || opp[Row::Outer][col] == 0 {
+            return false;
+        } 
+
+        true
+    }
+
+    fn is_capture_possible(pit: BoardIndex, cp_idx: &PlayerBoard, opp: &PlayerBoard) -> bool {
+        false
     }
 }
 
