@@ -6,7 +6,7 @@ const Y_SIZE: usize   = 2;
 pub(crate) const PITS_CNT: usize = X_SIZE * Y_SIZE;
 
 pub(crate) const REV_POSSIBLE_INNER_PITS: [usize; 2] = [1, 6];
-pub(crate) const REV_POSSIBLE_OUTER_PITS: [usize; 2] = [8, 15];
+pub(crate) const REV_POSSIBLE_OUTER_PITS: [usize; 2] = [0, 7];
 
 /* 
  *  ╔═══════════════════════════════╗
