@@ -1,14 +1,14 @@
-use std::ops::{Index, IndexMut};
 use std::fmt;
+use std::ops::{Index, IndexMut};
 
-pub(crate) const X_SIZE: usize   = 8;
-const Y_SIZE: usize   = 2;
+pub(crate) const X_SIZE: usize = 8;
+const Y_SIZE: usize = 2;
 pub(crate) const PITS_CNT: usize = X_SIZE * Y_SIZE;
 
 pub(crate) const REV_POSSIBLE_INNER_PITS: [usize; 2] = [1, 6];
 pub(crate) const REV_POSSIBLE_OUTER_PITS: [usize; 2] = [0, 7];
 
-/* 
+/*
  *  ╔═══════════════════════════════╗
  *  ║          P L A Y E R          ║
  *  ╠───┬───┬───┬───┬───┬───┬───┬───╣
@@ -28,7 +28,7 @@ pub enum GameError {
     Logic,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Row {
     Inner,
     Outer,
@@ -42,7 +42,7 @@ pub enum Direction {
 
 pub(crate) enum SowResult {
     End,
-    Continue {pit: BoardIndex},
+    Continue { pit: BoardIndex },
 }
 
 enum MoveType {
@@ -50,7 +50,7 @@ enum MoveType {
     Capture,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct BoardIndex(usize);
 impl BoardIndex {
     pub fn new(idx: usize) -> Result<Self, GameError> {
@@ -95,7 +95,7 @@ impl fmt::Display for BoardIndex {
 }
 
 type BoardArr = [u8; X_SIZE];
-pub struct PlayerBoard {   
+pub struct PlayerBoard {
     inner: BoardArr,
     outer: BoardArr,
 }
@@ -122,11 +122,19 @@ impl IndexMut<Row> for PlayerBoard {
 
 impl PlayerBoard {
     pub(crate) fn new() -> Self {
-        PlayerBoard { inner: [4; X_SIZE], outer: [0; X_SIZE] }
+        PlayerBoard {
+            inner: [4; X_SIZE],
+            outer: [0; X_SIZE],
+        }
     }
 
     // TODO: Unify capture and sow into one function
-    pub(crate) fn capture(&mut self, idx: BoardIndex, dir: Direction, mut seeds: u8) -> Result<SowResult, GameError> {
+    pub(crate) fn capture(
+        &mut self,
+        idx: BoardIndex,
+        dir: Direction,
+        mut seeds: u8,
+    ) -> Result<SowResult, GameError> {
         self.validate_move(idx, MoveType::Capture)?;
         let mut pos = idx;
         while seeds != 0 {
@@ -175,19 +183,23 @@ impl PlayerBoard {
         self[Row::Outer][col] = 0;
         captured
     }
-    
+
     pub(crate) fn has_moves(&self) -> bool {
-        self.inner.iter().chain(self.outer.iter()).any(|&s| s > 1) 
+        self.inner.iter().chain(self.outer.iter()).any(|&s| s > 1)
     }
 
     fn validate_move(&self, idx: BoardIndex, move_type: MoveType) -> Result<(), GameError> {
         let (row, col) = idx.split();
         match move_type {
             MoveType::Sow => {
-                if self[row][col] <= 1 {return Err(GameError::InvalidMove);}
+                if self[row][col] <= 1 {
+                    return Err(GameError::InvalidMove);
+                }
             }
             MoveType::Capture => {
-                if self[row][col] == 0 {return Err(GameError::EmptyPit);}
+                if self[row][col] == 0 {
+                    return Err(GameError::EmptyPit);
+                }
             }
         }
 

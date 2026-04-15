@@ -1,6 +1,6 @@
 use crate::board::{
-    BoardIndex, Direction, PlayerBoard, Row, SowResult,
-    REV_POSSIBLE_INNER_PITS, REV_POSSIBLE_OUTER_PITS, X_SIZE,
+    BoardIndex, Direction, PlayerBoard, REV_POSSIBLE_INNER_PITS, REV_POSSIBLE_OUTER_PITS, Row,
+    SowResult, X_SIZE,
 };
 use crate::move_source::MoveSource;
 
@@ -23,15 +23,21 @@ enum TurnResult {
 }
 
 pub struct Game {
-    players: [Player; 2]
+    players: [Player; 2],
 }
 
 impl Game {
     pub fn new(move_source_1: Box<dyn MoveSource>, move_source_2: Box<dyn MoveSource>) -> Self {
         Game {
             players: [
-                Player {board: PlayerBoard::new(), input: move_source_1},
-                Player {board: PlayerBoard::new(), input: move_source_2},
+                Player {
+                    board: PlayerBoard::new(),
+                    input: move_source_1,
+                },
+                Player {
+                    board: PlayerBoard::new(),
+                    input: move_source_2,
+                },
             ],
         }
     }
@@ -57,45 +63,57 @@ impl Game {
             return TurnResult::NoMovesAvailable;
         }
 
-        // TODO: Extract functions from each 
+        // TODO: Extract functions from each
         loop {
             state = match state {
                 TurnState::PickPit => {
-                    let pit = self.players[cp_idx].input.pick_pit(
+                    let pit = self.players[cp_idx]
+                        .input
+                        .pick_pit(&self.players[cp_idx].board, &self.players[opp_idx].board);
+                    if Self::is_reverse_possible(
+                        pit,
                         &self.players[cp_idx].board,
-                         &self.players[opp_idx].board
-                    );
-                    if Self::is_reverse_possible(pit, &self.players[cp_idx].board, &self.players[opp_idx].board) {
+                        &self.players[opp_idx].board,
+                    ) {
                         TurnState::PickDirection { pit }
                     } else {
-                        TurnState::Sowing { pit, dir: Direction::Forward }
+                        TurnState::Sowing {
+                            pit,
+                            dir: Direction::Forward,
+                        }
                     }
-                },
+                }
                 TurnState::PickDirection { pit } => {
-                    match self.players[cp_idx].input.pick_direction(     
-                        &self.players[cp_idx].board,
-                        &self.players[opp_idx].board
-                    ) {
+                    match self.players[cp_idx]
+                        .input
+                        .pick_direction(&self.players[cp_idx].board, &self.players[opp_idx].board)
+                    {
                         Ok(dir) => TurnState::Sowing { pit, dir },
                         Err(_) => TurnState::PickDirection { pit },
                     }
-                },
-                TurnState::Sowing { pit, dir } => {
-                    match self.players[cp_idx].board.sow(pit, dir) {
-                        Ok(SowResult::Continue { pit }) => {
-                            if Self::is_capture_possible(pit, &self.players[cp_idx].board, &self.players[opp_idx].board) {
-                                TurnState::Capture { pit, dir }
-                            } else if Self::is_reverse_possible(pit, &self.players[cp_idx].board, &self.players[opp_idx].board) {
-                                TurnState::PickDirection { pit }
-                            } else {
-                                TurnState::Sowing { pit, dir }
-                            }
-                        },
-                        Ok(SowResult::End) => TurnState::End,
-                        Err(_) => TurnState::PickPit,
+                }
+                TurnState::Sowing { pit, dir } => match self.players[cp_idx].board.sow(pit, dir) {
+                    Ok(SowResult::Continue { pit }) => {
+                        if Self::is_capture_possible(
+                            pit,
+                            &self.players[cp_idx].board,
+                            &self.players[opp_idx].board,
+                        ) {
+                            TurnState::Capture { pit, dir }
+                        } else if Self::is_reverse_possible(
+                            pit,
+                            &self.players[cp_idx].board,
+                            &self.players[opp_idx].board,
+                        ) {
+                            TurnState::PickDirection { pit }
+                        } else {
+                            TurnState::Sowing { pit, dir }
+                        }
                     }
+                    Ok(SowResult::End) => TurnState::End,
+                    Err(_) => TurnState::PickPit,
                 },
-                TurnState::Capture { pit, dir} => { 
+                TurnState::Capture { pit, dir } => {
                     let (_, col) = pit.split();
                     let mirror = BoardIndex::new(Self::mirror_col(col)).unwrap();
                     let seeds = self.players[opp_idx].board.take_seeds(mirror);
@@ -104,8 +122,10 @@ impl Game {
                         Ok(SowResult::End) => TurnState::End,
                         Err(e) => unreachable!("Capture logic error: {:?}", e),
                     }
-                },
-                TurnState::End => { return TurnResult::Continue; },
+                }
+                TurnState::End => {
+                    return TurnResult::Continue;
+                }
             }
         }
     }
@@ -115,17 +135,27 @@ impl Game {
         let (row, col) = pit.split();
 
         match row {
-            Row::Inner => { if !REV_POSSIBLE_INNER_PITS.contains(&col) {return false} },
-            Row::Outer => { if !REV_POSSIBLE_OUTER_PITS.contains(&col) {return false} },
+            Row::Inner => {
+                if !REV_POSSIBLE_INNER_PITS.contains(&col) {
+                    return false;
+                }
+            }
+            Row::Outer => {
+                if !REV_POSSIBLE_OUTER_PITS.contains(&col) {
+                    return false;
+                }
+            }
         }
 
         /* Is capture possible in opposite dir? */
         let seeds = cp_idx[row][col];
         let mut capture_pit: BoardIndex = pit;
-        for _ in 0..seeds {capture_pit = capture_pit.step(Direction::Reverse)};
+        for _ in 0..seeds {
+            capture_pit = capture_pit.step(Direction::Reverse)
+        }
 
         let (row, col) = capture_pit.split();
-        
+
         if row != Row::Inner {
             return false;
         }
@@ -136,19 +166,22 @@ impl Game {
 
         if opp[Row::Inner][col] == 0 || opp[Row::Outer][col] == 0 {
             return false;
-        } 
+        }
 
         true
     }
 
     fn is_capture_possible(pit: BoardIndex, cp: &PlayerBoard, opp: &PlayerBoard) -> bool {
         let (row, col) = pit.split();
-        if row != Row::Inner { return false; }
-        if cp[row][col] == 0 { return false; } 
-    
+        if row != Row::Inner {
+            return false;
+        }
+        if cp[row][col] == 0 {
+            return false;
+        }
+
         let col_mirror = Self::mirror_col(col);
-        opp[Row::Inner][col_mirror] > 0 &&
-        opp[Row::Outer][col_mirror] > 0
+        opp[Row::Inner][col_mirror] > 0 && opp[Row::Outer][col_mirror] > 0
     }
 
     fn mirror_col(col: usize) -> usize {

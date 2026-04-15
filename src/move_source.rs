@@ -1,10 +1,14 @@
 use std::io::Write;
 
-use crate::board::{BoardIndex, Direction, GameError, PlayerBoard, Row, PITS_CNT};
+use crate::board::{BoardIndex, Direction, GameError, PITS_CNT, PlayerBoard, Row};
 
 pub trait MoveSource {
     fn pick_pit(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> BoardIndex;
-    fn pick_direction(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> Result<Direction, GameError>;
+    fn pick_direction(
+        &mut self,
+        player: &PlayerBoard,
+        opponent: &PlayerBoard,
+    ) -> Result<Direction, GameError>;
 }
 
 pub struct RandomInput;
@@ -13,7 +17,11 @@ impl MoveSource for RandomInput {
         BoardIndex::new(rand::random_range(..PITS_CNT)).unwrap()
     }
 
-    fn pick_direction(&mut self, _player: &PlayerBoard, _opponent: &PlayerBoard) -> Result<Direction, GameError> {
+    fn pick_direction(
+        &mut self,
+        _player: &PlayerBoard,
+        _opponent: &PlayerBoard,
+    ) -> Result<Direction, GameError> {
         if rand::random_bool(0.5) {
             Ok(Direction::Forward)
         } else {
@@ -52,7 +60,7 @@ impl ConsoleInput {
 impl MoveSource for ConsoleInput {
     fn pick_pit(&mut self, player: &PlayerBoard, opponent: &PlayerBoard) -> BoardIndex {
         self.print_board(player, opponent);
-        
+
         print!("Choose index [0..15]: ");
         std::io::stdout().flush().unwrap();
 
@@ -60,8 +68,12 @@ impl MoveSource for ConsoleInput {
         std::io::stdin().read_line(&mut input).unwrap();
         BoardIndex::new(input.trim().parse().unwrap()).unwrap()
     }
-    
-    fn pick_direction(&mut self, _player: &PlayerBoard, _opponent: &PlayerBoard) -> Result<Direction, GameError> {
+
+    fn pick_direction(
+        &mut self,
+        _player: &PlayerBoard,
+        _opponent: &PlayerBoard,
+    ) -> Result<Direction, GameError> {
         print!("Reverse [y/n]: ");
         std::io::stdout().flush().unwrap();
 
