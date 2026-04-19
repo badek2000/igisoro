@@ -23,6 +23,12 @@ pub enum ApplyResult {
     GameOver { winner: usize },
 }
 
+impl Default for GameState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GameState {
     pub fn new() -> Self {
         GameState {

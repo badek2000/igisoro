@@ -4,7 +4,7 @@ mod game;
 mod move_source;
 mod state;
 
-pub use board::{BoardIndex, Direction, GameError, PlayerBoard, Row};
+pub use board::{BoardIndex, Direction, GameError, PlayerBoard, Row, X_SIZE};
 pub use engine::apply;
 pub use game::Game;
 pub use move_source::{ConsoleInput, MoveSource, RandomInput};

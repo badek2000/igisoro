@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::{Index, IndexMut};
 
-pub(crate) const X_SIZE: usize = 8;
+pub const X_SIZE: usize = 8;
 const Y_SIZE: usize = 2;
 pub(crate) const PITS_CNT: usize = X_SIZE * Y_SIZE;
 
@@ -131,6 +131,10 @@ impl PlayerBoard {
             inner: [4; X_SIZE],
             outer: [0; X_SIZE],
         }
+    }
+
+    pub fn from_arrays(inner: [u8; X_SIZE], outer: [u8; X_SIZE]) -> Self {
+        PlayerBoard { inner, outer }
     }
 
     // TODO: Unify capture and sow into one function

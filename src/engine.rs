@@ -21,7 +21,10 @@ pub fn apply(mut state: GameState, action: Action) -> Result<ApplyResult, GameEr
             if is_reverse_possible(pit, &state.boards[cp], &state.boards[opp]) {
                 Step::NeedDirection { pit }
             } else {
-                Step::Sowing { pit, dir: Direction::Forward }
+                Step::Sowing {
+                    pit,
+                    dir: Direction::Forward,
+                }
             }
         }
         (Action::Direction(dir), TurnPhase::SelectDirection { pit }) => {

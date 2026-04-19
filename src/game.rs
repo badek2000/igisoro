@@ -36,8 +36,8 @@ impl Iterator for Game {
                 TurnPhase::SelectPit => {
                     let cp = self.state.current_player;
                     let opp = 1 - cp;
-                    let pit = self.inputs[cp]
-                        .pick_pit(&self.state.boards[cp], &self.state.boards[opp]);
+                    let pit =
+                        self.inputs[cp].pick_pit(&self.state.boards[cp], &self.state.boards[opp]);
                     Action::Pit(pit.value())
                 }
                 TurnPhase::SelectDirection { .. } => {
