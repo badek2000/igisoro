@@ -1,190 +1,69 @@
-use crate::board::{
-    BoardIndex, Direction, PlayerBoard, REV_POSSIBLE_INNER_PITS, REV_POSSIBLE_OUTER_PITS, Row,
-    SowResult, X_SIZE,
-};
+use crate::engine::apply;
 use crate::move_source::MoveSource;
-
-struct Player {
-    board: PlayerBoard,
-    input: Box<dyn MoveSource>,
-}
-
-enum TurnState {
-    PickPit,
-    PickDirection { pit: BoardIndex },
-    Sowing { pit: BoardIndex, dir: Direction },
-    Capture { pit: BoardIndex, dir: Direction },
-    End,
-}
-
-enum TurnResult {
-    Continue,
-    NoMovesAvailable,
-}
+use crate::state::{Action, ApplyResult, GameState, TurnPhase};
 
 pub struct Game {
-    players: [Player; 2],
+    state: GameState,
+    inputs: [Box<dyn MoveSource>; 2],
+    pub winner: Option<usize>,
 }
 
 impl Game {
-    pub fn new(move_source_1: Box<dyn MoveSource>, move_source_2: Box<dyn MoveSource>) -> Self {
+    pub fn new(input1: Box<dyn MoveSource>, input2: Box<dyn MoveSource>) -> Self {
         Game {
-            players: [
-                Player {
-                    board: PlayerBoard::new(),
-                    input: move_source_1,
-                },
-                Player {
-                    board: PlayerBoard::new(),
-                    input: move_source_2,
-                },
-            ],
+            state: GameState::new(),
+            inputs: [input1, input2],
+            winner: None,
         }
     }
 
-    pub fn start(&mut self) {
-        let mut cp = 0;
-        loop {
-            match self.execute_turn(cp) {
-                TurnResult::Continue => cp = 1 - cp,
-                TurnResult::NoMovesAvailable => {
-                    println!("Player {} wins!", 2 - cp);
-                    return;
-                }
-            }
-        }
+    pub fn start(&mut self) -> usize {
+        for _ in self.by_ref() {}
+        self.winner.unwrap()
     }
+}
 
-    fn execute_turn(&mut self, cp_idx: usize) -> TurnResult {
-        let opp_idx = 1 - cp_idx;
-        let mut state = TurnState::PickPit;
+impl Iterator for Game {
+    type Item = GameState;
 
-        if !self.players[cp_idx].board.has_moves() {
-            return TurnResult::NoMovesAvailable;
+    fn next(&mut self) -> Option<GameState> {
+        if self.winner.is_some() {
+            return None;
         }
-
-        // TODO: Extract functions from each
+        let initial_player = self.state.current_player;
         loop {
-            state = match state {
-                TurnState::PickPit => {
-                    let pit = self.players[cp_idx]
-                        .input
-                        .pick_pit(&self.players[cp_idx].board, &self.players[opp_idx].board);
-                    if Self::is_reverse_possible(
-                        pit,
-                        &self.players[cp_idx].board,
-                        &self.players[opp_idx].board,
-                    ) {
-                        TurnState::PickDirection { pit }
-                    } else {
-                        TurnState::Sowing {
-                            pit,
-                            dir: Direction::Forward,
-                        }
-                    }
+            let action = match self.state.phase {
+                TurnPhase::SelectPit => {
+                    let cp = self.state.current_player;
+                    let opp = 1 - cp;
+                    let pit = self.inputs[cp]
+                        .pick_pit(&self.state.boards[cp], &self.state.boards[opp]);
+                    Action::Pit(pit.value())
                 }
-                TurnState::PickDirection { pit } => {
-                    match self.players[cp_idx]
-                        .input
-                        .pick_direction(&self.players[cp_idx].board, &self.players[opp_idx].board)
+                TurnPhase::SelectDirection { .. } => {
+                    let cp = self.state.current_player;
+                    let opp = 1 - cp;
+                    match self.inputs[cp]
+                        .pick_direction(&self.state.boards[cp], &self.state.boards[opp])
                     {
-                        Ok(dir) => TurnState::Sowing { pit, dir },
-                        Err(_) => TurnState::PickDirection { pit },
+                        Ok(dir) => Action::Direction(dir),
+                        Err(_) => continue,
                     }
                 }
-                TurnState::Sowing { pit, dir } => match self.players[cp_idx].board.sow(pit, dir) {
-                    Ok(SowResult::Continue { pit }) => {
-                        if Self::is_capture_possible(
-                            pit,
-                            &self.players[cp_idx].board,
-                            &self.players[opp_idx].board,
-                        ) {
-                            TurnState::Capture { pit, dir }
-                        } else if Self::is_reverse_possible(
-                            pit,
-                            &self.players[cp_idx].board,
-                            &self.players[opp_idx].board,
-                        ) {
-                            TurnState::PickDirection { pit }
-                        } else {
-                            TurnState::Sowing { pit, dir }
-                        }
-                    }
-                    Ok(SowResult::End) => TurnState::End,
-                    Err(_) => TurnState::PickPit,
-                },
-                TurnState::Capture { pit, dir } => {
-                    let (_, col) = pit.split();
-                    let mirror = BoardIndex::new(Self::mirror_col(col)).unwrap();
-                    let seeds = self.players[opp_idx].board.take_seeds(mirror);
-                    match self.players[cp_idx].board.capture(pit, dir, seeds) {
-                        Ok(SowResult::Continue { pit }) => TurnState::Sowing { pit, dir },
-                        Ok(SowResult::End) => TurnState::End,
-                        Err(e) => unreachable!("Capture logic error: {:?}", e),
+            };
+            match apply(self.state.clone(), action) {
+                Ok(ApplyResult::Ongoing(new_state)) => {
+                    self.state = new_state;
+                    if self.state.current_player != initial_player {
+                        return Some(self.state.clone());
                     }
                 }
-                TurnState::End => {
-                    return TurnResult::Continue;
+                Ok(ApplyResult::GameOver { winner }) => {
+                    self.winner = Some(winner);
+                    return None;
                 }
+                Err(_) => {}
             }
         }
-    }
-
-    fn is_reverse_possible(pit: BoardIndex, cp_idx: &PlayerBoard, opp: &PlayerBoard) -> bool {
-        /* Is player at special pit? */
-        let (row, col) = pit.split();
-
-        match row {
-            Row::Inner => {
-                if !REV_POSSIBLE_INNER_PITS.contains(&col) {
-                    return false;
-                }
-            }
-            Row::Outer => {
-                if !REV_POSSIBLE_OUTER_PITS.contains(&col) {
-                    return false;
-                }
-            }
-        }
-
-        /* Is capture possible in opposite dir? */
-        let seeds = cp_idx[row][col];
-        let mut capture_pit: BoardIndex = pit;
-        for _ in 0..seeds {
-            capture_pit = capture_pit.step(Direction::Reverse)
-        }
-
-        let (row, col) = capture_pit.split();
-
-        if row != Row::Inner {
-            return false;
-        }
-
-        if cp_idx[row][col] == 0 {
-            return false;
-        }
-
-        if opp[Row::Inner][col] == 0 || opp[Row::Outer][col] == 0 {
-            return false;
-        }
-
-        true
-    }
-
-    fn is_capture_possible(pit: BoardIndex, cp: &PlayerBoard, opp: &PlayerBoard) -> bool {
-        let (row, col) = pit.split();
-        if row != Row::Inner {
-            return false;
-        }
-        if cp[row][col] == 0 {
-            return false;
-        }
-
-        let col_mirror = Self::mirror_col(col);
-        opp[Row::Inner][col_mirror] > 0 && opp[Row::Outer][col_mirror] > 0
-    }
-
-    fn mirror_col(col: usize) -> usize {
-        X_SIZE - col - 1
     }
 }

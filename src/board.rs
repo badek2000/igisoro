@@ -60,6 +60,10 @@ impl BoardIndex {
         Ok(BoardIndex(idx))
     }
 
+    pub fn value(&self) -> usize {
+        self.0
+    }
+
     pub fn split(&self) -> (Row, usize) {
         if self.0 < X_SIZE {
             (Row::Inner, self.0)
@@ -95,6 +99,7 @@ impl fmt::Display for BoardIndex {
 }
 
 type BoardArr = [u8; X_SIZE];
+#[derive(Clone)]
 pub struct PlayerBoard {
     inner: BoardArr,
     outer: BoardArr,
